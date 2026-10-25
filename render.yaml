@@ -1,0 +1,14 @@
+# One-click deploy on Render: New + > Blueprint > pick this repo.
+services:
+  - type: web
+    name: finpilot
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: MONGO_DB_URI
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
