@@ -4,16 +4,15 @@ import { AiSettings, AskPanel } from './components/AiPanels';
 import Composer from './components/Composer';
 import Review from './components/Review';
 import Ledger from './components/Ledger';
-import { CategoryChart, DailyChart, Insights, StatTiles } from './components/Dashboard';
+import { Budgets, DailyChart, Insights, KpiStrip } from './components/Dashboard';
 
 const thisMonth = () => localToday().slice(0, 7);
-const THEMES = { system: '◐ Auto', light: '☀ Light', dark: '☾ Dark' };
 const NEXT_THEME = { system: 'light', light: 'dark', dark: 'system' };
 
 function Saved({ saved, onAnother }) {
   const { transaction: t, budget: b } = saved;
   return (
-    <section className="card saved" aria-live="polite">
+    <section className="panel saved" aria-live="polite">
       <div className="tick" aria-hidden="true">
         ✓
       </div>
@@ -194,127 +193,124 @@ export default function App() {
   const atCurrent = month >= thisMonth();
 
   return (
-    <div className="page">
-      <header className="top">
-        <div className="brand">
-          <span className="logo" aria-hidden="true">
-            F
-          </span>
-          <div>
-            <h1>FinPilot</h1>
-            <p className="muted">Say what you spent. I’ll file it.</p>
+    <div className="app">
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <span className="logo" aria-hidden="true">
+              F
+            </span>
+            <span className="brand-name">FinPilot</span>
           </div>
-        </div>
-        <div className="status">
-          {health && (
-            <>
-              <AiSettings meta={meta} health={health} ai={ai} setAi={setAi} />
-              <span className={`pill ${health.db === 'connected' ? 'good' : 'bad'}`}>{health.db === 'connected' ? 'Cloudflare D1 connected' : 'Database offline'}</span>
-            </>
-          )}
-          <button className="pill theme-btn" onClick={() => setTheme(NEXT_THEME[theme])} aria-label={`Theme: ${theme}. Click to change.`}>
-            {THEMES[theme]}
-          </button>
+
+          <nav className="month-nav" aria-label="Month">
+            <button className="icon-btn" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label="Previous month">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 6l-6 6 6 6" />
+              </svg>
+            </button>
+            <span className="month-label">{monthLabel(month)}</span>
+            <button className="icon-btn" onClick={() => setMonth((m) => shiftMonth(m, 1))} disabled={atCurrent} aria-label="Next month">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </button>
+            {!atCurrent && (
+              <button className="link" onClick={() => setMonth(thisMonth())}>
+                Today
+              </button>
+            )}
+          </nav>
+
+          <div className="topbar-actions">
+            {health && <AiSettings meta={meta} health={health} ai={ai} setAi={setAi} />}
+            {health && <span className={`status-dot ${health.db === 'connected' ? 'ok' : 'bad'}`} title={health.db === 'connected' ? 'Database connected (Cloudflare D1)' : 'Database offline'} />}
+            <button className="icon-btn" onClick={() => setTheme(NEXT_THEME[theme])} title={`Theme: ${theme}`} aria-label={`Theme: ${theme}. Click to change.`}>
+              {theme === 'dark' ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+                </svg>
+              ) : theme === 'light' ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8" />
+                  <path d="M12 4v16" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
-      <nav className="toolbar" aria-label="Month">
-        <div className="month-nav">
-          <button className="btn tiny" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label="Previous month">
-            ‹
-          </button>
-          <strong>{monthLabel(month)}</strong>
-          <button className="btn tiny" onClick={() => setMonth((m) => shiftMonth(m, 1))} disabled={atCurrent} aria-label="Next month">
-            ›
-          </button>
-          {!atCurrent && (
-            <button className="link" onClick={() => setMonth(thisMonth())}>
-              Today
+      <div className="page">
+        {isEmpty && month === thisMonth() ? (
+          <section className="welcome">
+            <div>
+              <h1>Track spending by just describing it.</h1>
+              <p className="muted">Type, speak or snap a receipt. Or load a sample month to explore everything first.</p>
+            </div>
+            <button className="btn primary" onClick={loadDemo} disabled={demoBusy}>
+              {demoBusy ? 'Loading…' : 'Load sample data'}
             </button>
-          )}
-        </div>
-        <div className="demo-actions">
-          <button className="btn tiny" onClick={loadDemo} disabled={demoBusy}>
-            {demoBusy ? 'Working…' : '✨ Load demo data'}
-          </button>
-          {hasDemo && (
-            <button className="btn tiny ghost" onClick={clearDemo} disabled={demoBusy}>
-              Clear demo
-            </button>
-          )}
-        </div>
-      </nav>
-
-      {isEmpty && month === thisMonth() && (
-        <section className="demo-banner">
-          <div>
-            <strong>New here?</strong> Load a realistic demo month to explore the dashboard, budgets, insights, editing and CSV export. Demo entries are tagged and can be cleared any time.
+          </section>
+        ) : (
+          <div className="page-head">
+            <h1>{monthLabel(month)}</h1>
+            <div className="page-actions">
+              {hasDemo ? (
+                <button className="btn small" onClick={clearDemo} disabled={demoBusy}>
+                  Clear sample data
+                </button>
+              ) : (
+                <button className="btn small" onClick={loadDemo} disabled={demoBusy}>
+                  Load sample data
+                </button>
+              )}
+            </div>
           </div>
-          <button className="btn primary" onClick={loadDemo} disabled={demoBusy}>
-            Try the demo
-          </button>
-        </section>
-      )}
+        )}
 
-      <main className="layout">
-        <div className="flow">
-          <ol className="steps" aria-label="Progress">
-            <li className={stage === 'compose' ? 'on' : 'done'}>Describe</li>
-            <li className={stage === 'review' ? 'on' : stage === 'saved' ? 'done' : ''}>Review</li>
-            <li className={stage === 'saved' ? 'on' : ''}>Saved</li>
-          </ol>
+        {summary && <KpiStrip summary={summary} />}
 
-          {stage === 'compose' && <Composer key={composerKey} busy={busy || !meta} onSubmit={read} onReceipt={readReceipt} aiAvailable={Boolean(meta?.ai?.available)} />}
-          {error && stage === 'compose' && <p className="hint error banner">{error}</p>}
-          {stage === 'review' && result && meta && <Review result={result} meta={meta} receipt={receipt} onSaved={onSaved} onDiscard={startOver} />}
-          {stage === 'saved' && saved && <Saved saved={saved} onAnother={startOver} />}
+        <main className="grid">
+          <div className="col">
+            {stage === 'compose' && <Composer key={composerKey} busy={busy || !meta} onSubmit={read} onReceipt={readReceipt} aiAvailable={Boolean(meta?.ai?.available)} />}
+            {error && stage === 'compose' && <p className="hint error">{error}</p>}
+            {stage === 'review' && result && meta && <Review result={result} meta={meta} receipt={receipt} onSaved={onSaved} onDiscard={startOver} />}
+            {stage === 'saved' && saved && <Saved saved={saved} onAnother={startOver} />}
 
-          <p className="privacy">
-            Your ledger is private to this browser. Card numbers, OTPs, phone numbers and emails are stripped out before anything is processed. Nothing is saved until you press <em>Save</em>.
-          </p>
-        </div>
+            {summary && <DailyChart summary={summary} />}
 
-        <aside className="card overview">
-          <h2>{monthLabel(month)}</h2>
-          {summary ? (
-            <>
-              <StatTiles summary={summary} />
-              <Insights insights={summary.insights} />
-              {Object.keys(summary.totals).length === 0 && <p className="muted">Nothing logged this month yet.</p>}
-            </>
-          ) : (
-            <p className="muted">{listError || 'Loading…'}</p>
-          )}
-        </aside>
-      </main>
-
-      {summary && (
-        <section className="charts">
-          <div className="card">
-            <DailyChart summary={summary} />
+            <Ledger
+              meta={meta}
+              transactions={transactions}
+              loading={listLoading}
+              error={listError}
+              filters={filters}
+              setFilters={setFilters}
+              freshId={saved?.transaction?.id}
+              onRefresh={refresh}
+              onDelete={remove}
+              onExport={exportCsv}
+            />
           </div>
-          <div className="card">
-            <CategoryChart summary={summary} onChanged={refresh} />
-          </div>
-        </section>
-      )}
 
-      <AskPanel month={month} ai={ai} available={Boolean(meta?.ai?.available)} hasData={Boolean(summary && Object.keys(summary.totals).length)} />
+          <aside className="col side">
+            {summary && <Budgets summary={summary} onChanged={refresh} />}
+            {summary && <Insights insights={summary.insights} />}
+            <AskPanel month={month} ai={ai} available={Boolean(meta?.ai?.available)} hasData={Boolean(summary && Object.keys(summary.totals).length)} />
+          </aside>
+        </main>
 
-      <Ledger
-        meta={meta}
-        transactions={transactions}
-        loading={listLoading}
-        error={listError}
-        filters={filters}
-        setFilters={setFilters}
-        freshId={saved?.transaction?.id}
-        onRefresh={refresh}
-        onDelete={remove}
-        onExport={exportCsv}
-      />
-
-      <footer className="foot muted">FinPilot · Cloudflare Workers + D1 · {meta?.ai?.available ? 'Claude' : 'offline parser'}</footer>
+        <footer className="foot">
+          <span>Private to this browser · card numbers, OTPs, phones and emails are stripped before processing</span>
+          <span>Cloudflare Workers + D1{meta?.ai?.available ? ' · Claude' : ''}</span>
+        </footer>
+      </div>
 
       {toast && (
         <div className="toast" role="status">

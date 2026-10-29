@@ -84,7 +84,7 @@ export default function Review({ result, meta, receipt, onSaved, onDiscard }) {
   };
 
   return (
-    <section className="card review" aria-live="polite">
+    <section className="panel review" aria-live="polite">
       <header className="review-head">
         <div>
           <h2>Here’s what I understood</h2>

@@ -46,7 +46,7 @@ function EditDialog({ t, meta, onClose, onSaved }) {
 
   return (
     <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="card modal" onSubmit={save} role="dialog" aria-modal="true" aria-labelledby="edit-title">
+      <form className="panel modal" onSubmit={save} role="dialog" aria-modal="true" aria-labelledby="edit-title">
         <h2 id="edit-title">Edit entry</h2>
         <div className="fields">
           <div className="field">
@@ -124,47 +124,71 @@ function EditDialog({ t, meta, onClose, onSaved }) {
   );
 }
 
+const CATEGORY_GLYPH = {
+  'Food & Dining': '🍽',
+  Groceries: '🛒',
+  Transport: '🚕',
+  Shopping: '🛍',
+  'Bills & Utilities': '💡',
+  'Rent & Housing': '🏠',
+  Health: '⚕',
+  Entertainment: '🎬',
+  Travel: '✈',
+  Education: '📚',
+  'Personal Care': '✂',
+  'Gifts & Donations': '🎁',
+  'Salary & Income': '₹',
+  Other: '•',
+};
+
 function Entry({ t, onDelete, onEdit, highlight }) {
   const [asking, setAsking] = useState(false);
   return (
     <li className={`entry ${highlight ? 'fresh' : ''}`}>
+      <span className={`glyph ${t.type}`} aria-hidden="true">
+        {CATEGORY_GLYPH[t.category] || '•'}
+      </span>
       <div className="entry-main">
         <span className="entry-title">
           {t.description || t.merchant || t.category}
-          {t.isDemo && <span className="demo-tag">demo</span>}
+          {t.isDemo && <span className="tag">Demo</span>}
         </span>
         <span className="entry-sub">
-          {prettyDate(t.date)} · {t.category}
+          {t.category}
           {t.merchant && t.description ? ` · ${t.merchant}` : ''}
           {t.paymentMethod ? ` · ${PAYMENT_LABELS[t.paymentMethod]}` : ''}
         </span>
       </div>
-      <div className="entry-side">
-        <span className={`entry-amt ${t.type}`}>
-          {t.type === 'income' ? '+' : '−'}
-          {money(t.amount, t.currency)}
-        </span>
+      <span className="entry-date">{prettyDate(t.date).replace(/ \d{4}$/, '')}</span>
+      <span className={`entry-amt ${t.type}`}>
+        {t.type === 'income' ? '+' : '−'}
+        {money(t.amount, t.currency)}
+      </span>
+      <span className="entry-actions">
         {asking ? (
-          <span className="ask">
-            Delete?{' '}
-            <button className="link danger" onClick={() => onDelete(t.id)}>
-              Yes
-            </button>{' '}
-            <button className="link" onClick={() => setAsking(false)}>
-              No
+          <>
+            <button className="btn small danger" onClick={() => onDelete(t.id)}>
+              Delete
             </button>
-          </span>
+            <button className="btn small" onClick={() => setAsking(false)}>
+              Keep
+            </button>
+          </>
         ) : (
-          <span className="entry-actions">
-            <button className="link quiet" onClick={() => onEdit(t)}>
-              Edit
+          <>
+            <button className="row-action" onClick={() => onEdit(t)} aria-label="Edit entry" title="Edit">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" />
+              </svg>
             </button>
-            <button className="link quiet" onClick={() => setAsking(true)} aria-label="Delete entry">
-              Remove
+            <button className="row-action" onClick={() => setAsking(true)} aria-label="Delete entry" title="Delete">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" />
+              </svg>
             </button>
-          </span>
+          </>
         )}
-      </div>
+      </span>
     </li>
   );
 }
@@ -182,22 +206,30 @@ export default function Ledger({ meta, transactions, loading, error, filters, se
   const filtered = filters.q || filters.category || filters.type;
 
   return (
-    <section className="card ledger">
-      <div className="ledger-head">
-        <h2>Ledger</h2>
-        <button className="btn tiny" onClick={onExport} disabled={!transactions.length}>
+    <section className="panel ledger">
+      <div className="panel-head">
+        <h2 className="panel-title">
+          Transactions <span className="count">{transactions.length}</span>
+        </h2>
+        <button className="btn small" onClick={onExport} disabled={!transactions.length}>
           Export CSV
         </button>
       </div>
       <div className="filters">
-        <input type="search" placeholder="Search merchant or note…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search ledger" />
+        <div className="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="6" />
+            <path d="M20 20l-4.5-4.5" />
+          </svg>
+          <input type="search" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search transactions" />
+        </div>
         <select value={filters.category} onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))} aria-label="Filter by category">
           <option value="">All categories</option>
           {meta?.categories.map((c) => (
             <option key={c}>{c}</option>
           ))}
         </select>
-        <div className="seg small-seg" role="radiogroup" aria-label="Filter by type">
+        <div className="seg" role="radiogroup" aria-label="Filter by type">
           {[
             ['', 'All'],
             ['expense', 'Out'],
@@ -218,9 +250,9 @@ export default function Ledger({ meta, transactions, loading, error, filters, se
         </p>
       )}
       {loading && transactions.length === 0 ? (
-        <p className="muted">Loading…</p>
+        <p className="empty">Loading…</p>
       ) : transactions.length === 0 ? (
-        <p className="muted empty-chart">{filtered ? 'Nothing matches these filters.' : 'Your saved entries for this month will show up here.'}</p>
+        <p className="empty">{filtered ? 'No transactions match these filters.' : 'No transactions this month yet.'}</p>
       ) : (
         <ul className="entries">
           {transactions.map((t) => (

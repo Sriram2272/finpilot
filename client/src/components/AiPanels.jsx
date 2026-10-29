@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, aiSummary } from '../api';
+import { api } from '../api';
 
 const EFFORT_HELP = {
   low: 'Quickest. Plenty for everyday notes.',
@@ -177,21 +177,17 @@ export function AskPanel({ month, ai, available, hasData }) {
   }
 
   return (
-    <section className="card ask">
-      <header className="ask-head">
-        <span className="ask-icon" aria-hidden="true">
-          ✦
-        </span>
-        <div>
-          <h2>Ask FinPilot</h2>
-          <p className="muted small">Questions about {monthName(month)}. Answers come only from your own ledger.</p>
-        </div>
+    <section className="panel ask">
+      <div className="panel-head">
+        <h2 className="panel-title">
+          <span className="spark" aria-hidden="true">✦</span> Ask FinPilot
+        </h2>
         {history.length > 0 && (
-          <button className="link quiet ask-clear" onClick={() => setHistory([])}>
-            Clear chat
+          <button className="link" onClick={() => setHistory([])}>
+            Clear
           </button>
         )}
-      </header>
+      </div>
 
       {!available ? (
         <p className="muted ask-empty">Ask questions about your spending once Claude is enabled on the server.</p>
@@ -199,7 +195,7 @@ export function AskPanel({ month, ai, available, hasData }) {
         <>
           {history.length === 0 && !busy && (
             <div className="ask-start">
-              <p className="muted small">{hasData ? 'Try one of these:' : 'Log a few entries or load the demo, then try:'}</p>
+              <p className="muted small">{hasData ? 'Answers use only your own ledger.' : 'Log a few entries or load the demo, then ask:'}</p>
               <div className="ask-suggestions">
                 {SUGGESTIONS.map(([icon, s]) => (
                   <button type="button" key={s} className="suggestion" onClick={() => ask(s)}>
@@ -288,4 +284,3 @@ export function AskPanel({ month, ai, available, hasData }) {
   );
 }
 
-const monthName = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
