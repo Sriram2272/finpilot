@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "finpilot",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "client/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "finpilot", "database_id": "21c31903-04ef-461d-bb1b-7f9f907c64ce", "migrations_dir": "migrations" }
+  ]
+  // Optional AI: `npx wrangler secret put ANTHROPIC_API_KEY`. Without it the offline parser is used.
+}

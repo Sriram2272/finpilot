@@ -3,3 +3,5 @@ client/node_modules/
 client/dist/
 .env
 .vscode/.studio/
+.wrangler/
+.dev.vars

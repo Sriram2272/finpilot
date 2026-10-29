@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { api, localToday, money, newDraftId, PAYMENT_LABELS } from '../api';
+import { api, aiSummary, localToday, money, newDraftId, PAYMENT_LABELS } from '../api';
 
 const REQUIRED = ['type', 'amount', 'currency', 'category', 'date'];
 
@@ -11,7 +11,7 @@ const STATUS_TEXT = {
   edited: 'Edited by you',
 };
 
-export default function Review({ result, meta, onSaved, onDiscard }) {
+export default function Review({ result, meta, receipt, onSaved, onDiscard }) {
   const initial = useMemo(() => Object.fromEntries(Object.entries(result.fields).map(([k, f]) => [k, f.value ?? ''])), [result]);
   const [values, setValues] = useState(initial);
   const [edited, setEdited] = useState(() => new Set());
@@ -84,16 +84,21 @@ export default function Review({ result, meta, onSaved, onDiscard }) {
   };
 
   return (
-    <section className="card review" aria-live="polite">
+    <section className="panel review" aria-live="polite">
       <header className="review-head">
         <div>
           <h2>Here’s what I understood</h2>
           <p className="muted">Check the fields, fix anything that’s off, then save.</p>
         </div>
-        <span className={`engine ${result.engine}`}>{result.engine === 'claude' ? 'Read by Claude AI' : 'Offline parser'}</span>
+        <span className={`engine ${result.engine}`}>{result.engine === 'claude' ? `Read by ${result.ai?.label || 'Claude AI'}` : 'Offline parser'}</span>
       </header>
 
-      <blockquote className="quote">“{result.redactedNote}”</blockquote>
+      {result.source === 'receipt' && receipt ? (
+        <img className="receipt-thumb" src={receipt} alt="Your receipt" />
+      ) : (
+        <blockquote className="quote">“{result.redactedNote}”</blockquote>
+      )}
+      {result.ai && <p className="ai-stats">{aiSummary(result.ai)}</p>}
 
       {[...result.notices, ...result.ambiguities].map((n) => (
         <p className="note-box" key={n}>
