@@ -78,41 +78,182 @@ export function AiSettings({ meta, health, ai, setAi }) {
   );
 }
 
-const SUGGESTIONS = ['Where did most of my money go?', 'Am I on track with my budgets?', 'How does this month compare to last month?', 'Any subscriptions I could cut?'];
+const SUGGESTIONS = [
+  ['📊', 'Where did most of my money go?'],
+  ['🎯', 'Am I on track with my budgets?'],
+  ['📅', 'How does this month compare to last month?'],
+  ['✂️', 'Any subscriptions I could cut?'],
+];
+
+// Renders the small subset of markdown the assistant uses (**bold**, *italic*, "- " and "1. " lists)
+// as React elements, so nothing from the model is ever injected as HTML.
+function inline(text) {
+  return text.split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/g).map((part, i) => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (/^\*[^*]+\*$/.test(part)) return <em key={i}>{part.slice(1, -1)}</em>;
+    return part;
+  });
+}
+
+function RichText({ text }) {
+  const blocks = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const bullet = line.match(/^[-*•]\s+(.*)/);
+    const numbered = line.match(/^\d+[.)]\s+(.*)/);
+    const kind = bullet ? 'ul' : numbered ? 'ol' : 'p';
+    const body = bullet?.[1] ?? numbered?.[1] ?? line.replace(/^#+\s*/, '');
+    const last = blocks[blocks.length - 1];
+    if (kind !== 'p' && last?.kind === kind) last.items.push(body);
+    else blocks.push({ kind, items: [body] });
+  }
+  return (
+    <div className="rich">
+      {blocks.map((b, i) => {
+        if (b.kind === 'p') return <p key={i}>{inline(b.items[0])}</p>;
+        const List = b.kind;
+        return (
+          <List key={i}>
+            {b.items.map((item, j) => (
+              <li key={j}>{inline(item)}</li>
+            ))}
+          </List>
+        );
+      })}
+    </div>
+  );
+}
+
+function CopyButton({ text }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="msg-action"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text.replace(/\*\*/g, ''));
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
+        } catch {
+          /* clipboard blocked */
+        }
+      }}
+    >
+      {done ? '✓ Copied' : 'Copy'}
+    </button>
+  );
+}
 
 // Ask a question about this month's ledger, answered by Claude from the user's own data.
 export function AskPanel({ month, ai, available, hasData }) {
   const [question, setQuestion] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(null);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState('');
+  const endRef = useRef(null);
+  const busy = pending != null;
+
+  useEffect(() => {
+    if (history.length || pending) endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [history, pending]);
 
   async function ask(q) {
     const text = (q ?? question).trim();
     if (!text || busy) return;
-    setBusy(true);
+    setPending(text);
+    setQuestion('');
     setError('');
     try {
       const res = await api('/ask', { method: 'POST', body: { question: text, month, ai } });
-      setHistory((h) => [{ q: text, ...res }, ...h].slice(0, 4));
-      setQuestion('');
+      setHistory((h) => [...h, { q: text, ...res }].slice(-6));
     } catch (err) {
       setError(err.message);
+      setQuestion(text);
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   }
 
   return (
     <section className="card ask">
-      <div className="ask-head">
-        <h2>Ask FinPilot</h2>
-        <span className="muted small">answers from your ledger only</span>
-      </div>
+      <header className="ask-head">
+        <span className="ask-icon" aria-hidden="true">
+          ✦
+        </span>
+        <div>
+          <h2>Ask FinPilot</h2>
+          <p className="muted small">Questions about {monthName(month)}. Answers come only from your own ledger.</p>
+        </div>
+        {history.length > 0 && (
+          <button className="link quiet ask-clear" onClick={() => setHistory([])}>
+            Clear chat
+          </button>
+        )}
+      </header>
+
       {!available ? (
-        <p className="muted">Ask questions about your spending once Claude is enabled on the server.</p>
+        <p className="muted ask-empty">Ask questions about your spending once Claude is enabled on the server.</p>
       ) : (
         <>
+          {history.length === 0 && !busy && (
+            <div className="ask-start">
+              <p className="muted small">{hasData ? 'Try one of these:' : 'Log a few entries or load the demo, then try:'}</p>
+              <div className="ask-suggestions">
+                {SUGGESTIONS.map(([icon, s]) => (
+                  <button type="button" key={s} className="suggestion" onClick={() => ask(s)}>
+                    <span aria-hidden="true">{icon}</span>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(history.length > 0 || busy) && (
+            <ol className="thread" aria-live="polite">
+              {history.map((h, i) => (
+                <li key={`${h.q}-${i}`} className="turn">
+                  <div className="msg user">{h.q}</div>
+                  <div className="msg bot">
+                    <span className="bot-avatar" aria-hidden="true">
+                      F
+                    </span>
+                    <div className="bot-body">
+                      <RichText text={h.answer} />
+                      <div className="msg-foot">
+                        <span className="model-chip">{h.ai.label.replace('Claude ', '')}</span>
+                        <span>
+                          {h.ai.effort} · {(h.ai.ms / 1000).toFixed(1)}s · {h.ai.inputTokens + h.ai.outputTokens} tokens
+                        </span>
+                        <CopyButton text={h.answer} />
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              ))}
+              {busy && (
+                <li className="turn">
+                  <div className="msg user">{pending}</div>
+                  <div className="msg bot">
+                    <span className="bot-avatar" aria-hidden="true">
+                      F
+                    </span>
+                    <div className="bot-body typing" aria-label="FinPilot is thinking">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                </li>
+              )}
+              <li ref={endRef} aria-hidden="true" />
+            </ol>
+          )}
+
+          {error && <p className="hint error">{error}</p>}
+
           <form
             className="ask-form"
             onSubmit={(e) => {
@@ -120,33 +261,31 @@ export function AskPanel({ month, ai, available, hasData }) {
               ask();
             }}
           >
-            <input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={300} placeholder={hasData ? 'e.g. How much did I spend on food?' : 'Log something or load the demo first'} aria-label="Ask a question about your spending" disabled={busy} />
-            <button className="btn primary" disabled={busy || !question.trim()}>
-              {busy ? 'Thinking…' : 'Ask'}
+            <input
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              maxLength={300}
+              placeholder={history.length ? 'Ask a follow-up…' : 'Ask anything, e.g. How much did I spend on food?'}
+              aria-label="Ask a question about your spending"
+              disabled={busy}
+            />
+            <button className="ask-send" disabled={busy || !question.trim()} aria-label="Send question">
+              {busy ? '…' : '➤'}
             </button>
           </form>
-          <div className="examples">
-            {SUGGESTIONS.map((s) => (
-              <button type="button" key={s} className="chip" onClick={() => ask(s)} disabled={busy}>
-                {s}
-              </button>
-            ))}
-          </div>
-          {error && <p className="hint error">{error}</p>}
-          {busy && <p className="muted small thinking">Reading your ledger…</p>}
-          <ul className="answers">
-            {history.map((h, i) => (
-              <li key={`${h.q}-${i}`} className="answer">
-                <p className="answer-q">{h.q}</p>
-                <div className="answer-a">
-                  {h.answer.split('\n').map((line, j) => (line.trim() ? <p key={j}>{line}</p> : null))}
-                </div>
-                <p className="ai-stats">{aiSummary(h.ai)}</p>
-              </li>
-            ))}
-          </ul>
+          {history.length > 0 && !busy && (
+            <div className="ask-more">
+              {SUGGESTIONS.filter(([, s]) => !history.some((h) => h.q === s)).map(([icon, s]) => (
+                <button type="button" key={s} className="chip" onClick={() => ask(s)}>
+                  {icon} {s}
+                </button>
+              ))}
+            </div>
+          )}
         </>
       )}
     </section>
   );
 }
+
+const monthName = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
