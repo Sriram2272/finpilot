@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, applyTheme, download, loadTheme, localToday, money, monthLabel, prettyDate, shiftMonth } from './api';
+import { api, applyTheme, download, loadAi, loadTheme, localToday, money, monthLabel, prettyDate, saveAi, shiftMonth } from './api';
+import { AiSettings, AskPanel } from './components/AiPanels';
 import Composer from './components/Composer';
 import Review from './components/Review';
 import Ledger from './components/Ledger';
@@ -45,6 +46,12 @@ export default function App() {
   const [meta, setMeta] = useState(null);
   const [theme, setTheme] = useState(loadTheme);
   const [month, setMonth] = useState(thisMonth);
+  const [ai, setAiState] = useState(loadAi);
+  const [receipt, setReceipt] = useState('');
+  const setAi = (next) => {
+    setAiState(next);
+    saveAi(next);
+  };
 
   const [stage, setStage] = useState('compose'); // compose | review | saved
   const [busy, setBusy] = useState(false);
@@ -97,7 +104,23 @@ export default function App() {
     setBusy(true);
     setError('');
     try {
-      const data = await api('/extract', { method: 'POST', body: { note, today: localToday() } });
+      const data = await api('/extract', { method: 'POST', body: { note, today: localToday(), ai } });
+      setReceipt('');
+      setResult(data);
+      setStage('review');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function readReceipt(image) {
+    setBusy(true);
+    setError('');
+    try {
+      const data = await api('/extract-receipt', { method: 'POST', body: { image, today: localToday(), ai } });
+      setReceipt(image);
       setResult(data);
       setStage('review');
     } catch (err) {
@@ -185,7 +208,7 @@ export default function App() {
         <div className="status">
           {health && (
             <>
-              <span className={`pill ${health.engine === 'claude' ? 'good' : 'neutral'}`}>{health.engine === 'claude' ? 'AI: Claude' : 'AI: offline parser'}</span>
+              <AiSettings meta={meta} health={health} ai={ai} setAi={setAi} />
               <span className={`pill ${health.db === 'connected' ? 'good' : 'bad'}`}>{health.db === 'connected' ? 'Cloudflare D1 connected' : 'Database offline'}</span>
             </>
           )}
@@ -241,9 +264,9 @@ export default function App() {
             <li className={stage === 'saved' ? 'on' : ''}>Saved</li>
           </ol>
 
-          {stage === 'compose' && <Composer key={composerKey} busy={busy || !meta} onSubmit={read} />}
+          {stage === 'compose' && <Composer key={composerKey} busy={busy || !meta} onSubmit={read} onReceipt={readReceipt} aiAvailable={Boolean(meta?.ai?.available)} />}
           {error && stage === 'compose' && <p className="hint error banner">{error}</p>}
-          {stage === 'review' && result && meta && <Review result={result} meta={meta} onSaved={onSaved} onDiscard={startOver} />}
+          {stage === 'review' && result && meta && <Review result={result} meta={meta} receipt={receipt} onSaved={onSaved} onDiscard={startOver} />}
           {stage === 'saved' && saved && <Saved saved={saved} onAnother={startOver} />}
 
           <p className="privacy">
@@ -276,6 +299,8 @@ export default function App() {
         </section>
       )}
 
+      <AskPanel month={month} ai={ai} available={Boolean(meta?.ai?.available)} hasData={Boolean(summary && Object.keys(summary.totals).length)} />
+
       <Ledger
         meta={meta}
         transactions={transactions}
@@ -289,7 +314,7 @@ export default function App() {
         onExport={exportCsv}
       />
 
-      <footer className="foot muted">FinPilot · Cloudflare Workers + D1 · {health?.engine === 'claude' ? `Claude (${health.model})` : 'offline parser'}</footer>
+      <footer className="foot muted">FinPilot · Cloudflare Workers + D1 · {meta?.ai?.available ? 'Claude' : 'offline parser'}</footer>
 
       {toast && (
         <div className="toast" role="status">

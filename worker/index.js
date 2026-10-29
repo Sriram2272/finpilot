@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { extract, engineName, modelName } from '../lib/extract.js';
+import { extract, extractReceipt, askLedger, engineName, modelName, aiMeta, AiUnavailableError, BadInputError, ExtractionError } from '../lib/extract.js';
 import { validateDraft, toRecord, CATEGORIES, PAYMENT_METHODS, CURRENCIES, LARGE_AMOUNT, parseIsoDate } from '../lib/schema.js';
 import { buildDemo, prevMonth } from '../lib/demo.js';
 import { buildInsights } from '../lib/insights.js';
@@ -78,7 +78,7 @@ app.get('/api/health', async (c) => {
     return c.json({ ok: true, db, dbEngine: 'cloudflare-d1', engine, model: engine === 'claude' ? modelName(c.env) : null });
 });
 
-app.get('/api/meta', (c) => c.json({ categories: CATEGORIES, paymentMethods: PAYMENT_METHODS, currencies: CURRENCIES, largeAmount: LARGE_AMOUNT }));
+app.get('/api/meta', (c) => c.json({ categories: CATEGORIES, paymentMethods: PAYMENT_METHODS, currencies: CURRENCIES, largeAmount: LARGE_AMOUNT, ai: aiMeta(c.env) }));
 
 // Step 1: note -> AI extraction -> schema validation. Nothing is saved here.
 app.post('/api/extract', rateLimit, async (c) => {
@@ -89,12 +89,37 @@ app.post('/api/extract', rateLimit, async (c) => {
     if (note.length > MAX_NOTE) return fail(c, 400, 'NOTE_TOO_LONG', `Please keep it under ${MAX_NOTE} characters.`);
 
     const today = resolveToday(body.today);
-    const result = await extract(note, today, c.env);
+    const result = await extract(note, today, c.env, body.ai);
     if (!result.isFinancial) {
         return fail(c, 422, 'NOT_A_TRANSACTION', "That doesn't look like money spent or received. Try something like “Paid 250 for lunch at Subway today”.", { engine: result.engine });
     }
     return c.json({ ...result, today, ...validateDraft(result.draft, { today }) });
 });
+
+// Same as /extract, but from a photo of a receipt or bill (Claude vision).
+const MAX_IMAGE = 6_000_000; // characters of base64, about 4.5 MB
+app.post('/api/extract-receipt', rateLimit, async (c) => {
+    const body = await readJson(c);
+    if (!body) return fail(c, 400, 'BAD_JSON', 'Request body is not valid JSON.');
+    if (typeof body.image !== 'string' || !body.image) return fail(c, 400, 'NO_IMAGE', 'Please choose a photo first.');
+    if (body.image.length > MAX_IMAGE) return fail(c, 413, 'TOO_LARGE', 'That photo is too large. Try a smaller one.');
+    const today = resolveToday(body.today);
+    try {
+        const result = await extractReceipt(body.image, today, c.env, body.ai);
+        if (!result.isFinancial) return fail(c, 422, 'NOT_A_TRANSACTION', "That doesn't look like a receipt or bill. Try a clearer photo.", { engine: 'claude' });
+        return c.json({ ...result, today, ...validateDraft(result.draft, { today }) });
+    } catch (err) {
+        return aiError(c, err);
+    }
+});
+
+function aiError(c, err) {
+    if (err instanceof AiUnavailableError) return fail(c, 503, 'AI_UNAVAILABLE', err.message);
+    if (err instanceof BadInputError) return fail(c, 400, 'BAD_INPUT', err.message);
+    if (err instanceof ExtractionError) return fail(c, 502, 'AI_FAILED', err.message);
+    console.error('AI call failed:', err.message);
+    return fail(c, 502, 'AI_FAILED', 'The AI service could not be reached. Please try again, or pick a different model.');
+}
 
 // Re-validates a user-confirmed draft. Returns the record or an error response.
 function checkDraft(c, body) {
@@ -228,6 +253,40 @@ ledger.post('/demo', async (c) => {
 });
 
 ledger.delete('/demo', async (c) => c.json({ removed: await store.clearDemo(c.env.DB, c.get('ledgerId')) }));
+
+// Ask FinPilot: a question about this month's ledger, answered by Claude from the user's own data.
+ledger.post('/ask', rateLimit, async (c) => {
+    const body = await readJson(c);
+    if (!body) return fail(c, 400, 'BAD_JSON', 'Request body is not valid JSON.');
+    const question = typeof body.question === 'string' ? body.question.trim() : '';
+    if (!question) return fail(c, 400, 'EMPTY_QUESTION', 'Type a question first.');
+    if (question.length > 300) return fail(c, 400, 'QUESTION_TOO_LONG', 'Please keep questions under 300 characters.');
+    const db = c.env.DB;
+    const id = c.get('ledgerId');
+    const month = MONTH_RE.test(body.month || '') ? body.month : currentMonth(c);
+    const prev = prevMonth(month);
+    const slim = (t) => ({ date: t.date, type: t.type, amount: t.amount, currency: t.currency, category: t.category, merchant: t.merchant, description: t.description });
+    const [txs, prevTxs, totals, prevTotals, budgets] = await Promise.all([
+        store.listTransactions(db, id, { month, limit: 300 }),
+        store.listTransactions(db, id, { month: prev, limit: 300 }),
+        store.monthTotals(db, id, month),
+        store.monthTotals(db, id, prev),
+        store.getBudgets(db, id, month),
+    ]);
+    const context = {
+        today: resolveToday(c.req.header('X-Today')),
+        month,
+        totals,
+        budgets: budgets.map(({ category, currency, spent, count, limit }) => ({ category, currency, spent, count, limit })),
+        transactions: txs.map(slim),
+        previousMonth: { month: prev, totals: prevTotals, transactions: prevTxs.map(slim) },
+    };
+    try {
+        return c.json(await askLedger(question, context, c.env, body.ai));
+    } catch (err) {
+        return aiError(c, err);
+    }
+});
 
 ledger.delete('/ledger', async (c) => c.json({ removed: await store.clearLedger(c.env.DB, c.get('ledgerId')) }));
 

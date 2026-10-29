@@ -107,3 +107,39 @@ export function applyTheme(theme) {
     /* private mode */
   }
 }
+
+// AI model + effort choice, remembered per browser. null means "use the server default".
+export function loadAi() {
+  try {
+    return JSON.parse(localStorage.getItem('finpilot-ai')) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveAi(ai) {
+  try {
+    localStorage.setItem('finpilot-ai', JSON.stringify(ai));
+  } catch {
+    /* private mode */
+  }
+}
+
+// Shrinks a photo in the browser before upload: long edge at most `max` px, JPEG.
+export async function imageToDataUrl(file, max = 1600) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+export function aiSummary(ai) {
+  if (!ai) return '';
+  const secs = ai.ms != null ? ` · ${(ai.ms / 1000).toFixed(1)}s` : '';
+  const tokens = ai.outputTokens != null ? ` · ${ai.inputTokens} in / ${ai.outputTokens} out tokens` : '';
+  return `${ai.label} · ${ai.effort} effort${secs}${tokens}`;
+}

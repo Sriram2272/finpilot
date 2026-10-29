@@ -109,3 +109,10 @@ test('insights flag overspending, budgets and savings', () => {
 test('insights are empty for an empty month', () => {
     assert.deepEqual(buildInsights({ month: '2026-10', today: '2026-10-15', currency: 'INR', totals: {}, prevTotals: {}, budgets: [], daily: [], prevDaily: [] }), []);
 });
+
+test('AI model and effort choices are limited to the allowlist', async () => {
+    const { resolveAi } = await import('../lib/extract.js');
+    assert.deepEqual(resolveAi({}, { model: 'claude-haiku-5-5', effort: 'high' }), { model: 'claude-haiku-5-5', effort: 'high' });
+    assert.deepEqual(resolveAi({}, { model: 'gpt-4', effort: 'ultra' }), { model: 'claude-opus-5-5', effort: 'low' });
+    assert.deepEqual(resolveAi({ ANTHROPIC_MODEL: 'claude-fable-5-1' }), { model: 'claude-fable-5-1', effort: 'low' });
+});

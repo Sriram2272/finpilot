@@ -315,3 +315,36 @@ textarea:focus, input:focus, select:focus { border-color: var(--accent); box-sha
 .modal { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; }
 .field.wide { grid-column: 1 / -1; }
 .foot { text-align: center; font-size: 0.78rem; margin-top: 32px; }
+
+/* AI settings */
+.ai-settings { position: relative; }
+.ai-pill { cursor: pointer; font: inherit; font-size: 0.78rem; }
+.ai-pop { position: absolute; right: 0; top: calc(100% + 8px); width: min(340px, calc(100vw - 32px)); z-index: 30; padding: 16px; box-shadow: 0 10px 30px var(--shadow); }
+.ai-pop h3 { margin: 0 0 8px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.ai-pop .model-list + h3 { margin-top: 14px; }
+.model-list { display: flex; flex-direction: column; gap: 6px; }
+.model-opt { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; text-align: left; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); cursor: pointer; }
+.model-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.ai-pop .seg button { padding: 6px 4px; font-size: 0.82rem; }
+.effort-help { margin-top: 8px; }
+.ai-pop-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+.ai-stats { font-size: 0.75rem; color: var(--ink-2); margin: -4px 0 8px; font-variant-numeric: tabular-nums; }
+
+/* receipts */
+.receipt-busy { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.receipt-busy img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); animation: pulse 1.2s infinite; }
+.receipt-thumb { display: block; max-height: 220px; max-width: 100%; margin: 16px 0 12px; border-radius: 10px; border: 1px solid var(--line); }
+.composer-actions { flex-wrap: wrap; }
+
+/* ask */
+.ask { margin-top: 24px; }
+.ask-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.ask-form { display: flex; gap: 8px; margin-top: 14px; }
+.ask-form input { flex: 1; min-width: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--field); }
+.ask .examples { margin-top: 10px; }
+.thinking { margin-top: 10px; animation: pulse 1.2s infinite; }
+.answers { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.answer { border-top: 1px solid var(--line); padding-top: 12px; }
+.answer-q { font-weight: 600; margin-bottom: 6px; }
+.answer-a { display: flex; flex-direction: column; gap: 4px; font-size: 0.94rem; }
+.answer .ai-stats { margin: 8px 0 0; }

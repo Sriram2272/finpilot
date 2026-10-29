@@ -12,6 +12,9 @@ Project option 8 (FinPilot). The automation implemented is *"Convert a spoken ex
 - **One-click demo**: "Load demo data" fills this month and last with realistic entries and budget limits. Demo rows are tagged and "Clear demo" removes only them.
 - **Dashboard**: spent / received / net tiles with month-over-month change, a daily spending chart (hover tooltips + table view), category bars with budget-limit markers, and auto-generated insights (pace, top category, over-budget warnings, savings rate).
 - **Ledger**: month switcher, search, category and type filters, edit entries, CSV export (formula-injection safe).
+- **AI settings**: pick Claude Opus 5.5, Fable 5.1, Sonnet 5.5 or Haiku 5.5 and an effort level (low to max) from the header. Each result shows the model, effort, time taken and tokens used.
+- **Scan a receipt**: snap or upload a photo of a bill; Claude reads the total, shop, date and payment method into the same review screen.
+- **Ask FinPilot**: ask questions about your month ("Where did most of my money go?") and Claude answers from your own ledger data only.
 - **Dark mode** (auto / light / dark).
 - **Tests**: 30 unit + API integration tests run the real Worker routes and SQL against SQLite, plus a live smoke test and GitHub Actions CI.
 
@@ -51,12 +54,14 @@ npm run smoke -- https://finpilot.<you>.workers.dev
 |---|---|---|
 | GET | `/api/health` | DB status and active extraction engine |
 | GET | `/api/meta` | Allowed categories, currencies, payment methods |
-| POST | `/api/extract` | `{note, today}` → extracted draft + per-field validation (nothing saved) |
+| POST | `/api/extract` | `{note, today, ai?: {model, effort}}` → extracted draft + per-field validation (nothing saved) |
 | POST | `/api/transactions` | Re-validates and saves the transaction |
 | GET | `/api/transactions` | Ledger, filter with `month`, `q`, `category`, `type` |
 | PATCH / DELETE | `/api/transactions/:id` | Edit (re-validated) / remove an entry |
 | GET / PUT | `/api/budgets` | Monthly category totals / set or clear a limit |
 | GET | `/api/summary?month=` | Totals, previous month, budgets, daily series, insights |
+| POST | `/api/extract-receipt` | `{image, today, ai}` → same as /extract, from a receipt photo (needs Claude) |
+| POST | `/api/ask` | `{question, month, ai}` → answer about this ledger (needs Claude) |
 | GET | `/api/export.csv?month=` | CSV download |
 | POST / DELETE | `/api/demo` | Load / clear demo data |
 | DELETE | `/api/ledger` | Wipe this browser's ledger |

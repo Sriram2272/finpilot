@@ -185,3 +185,23 @@ test('bad JSON and unknown endpoints get readable JSON errors', async () => {
     const missing = await app.request('/api/nope', {}, env);
     assert.ok([400, 404].includes(missing.status));
 });
+
+test('meta lists the selectable AI models and effort levels', async () => {
+    const { data } = await call('GET', '/meta');
+    assert.equal(data.ai.available, false);
+    assert.deepEqual(data.ai.models.map((m) => m.id), ['claude-opus-5-5', 'claude-fable-5-1', 'claude-sonnet-5-5', 'claude-haiku-5-5']);
+    assert.deepEqual(data.ai.efforts, ['low', 'medium', 'high', 'xhigh', 'max']);
+    assert.deepEqual(data.ai.default, { model: 'claude-opus-5-5', effort: 'low' });
+});
+
+test('receipt scanning and Ask need Claude and say so clearly', async () => {
+    const img = 'data:image/png;base64,iVBORw0KGgo=';
+    const r = await call('POST', '/extract-receipt', { image: img, today });
+    assert.equal(r.status, 503);
+    assert.equal(r.data.error.code, 'AI_UNAVAILABLE');
+    assert.equal((await call('POST', '/extract-receipt', { today })).data.error.code, 'NO_IMAGE');
+    assert.equal((await call('POST', '/extract-receipt', { image: 'x'.repeat(6_000_001) })).status, 413);
+    const a = await call('POST', '/ask', { question: 'Where did my money go?', month });
+    assert.equal(a.status, 503);
+    assert.equal((await call('POST', '/ask', { question: '' })).data.error.code, 'EMPTY_QUESTION');
+});
