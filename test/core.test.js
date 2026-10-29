@@ -1,7 +1,9 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { validateDraft, AiExtractionSchema } = require('../lib/schema');
-const { redact, extractOffline } = require('../lib/extract');
+import test from 'node:test';
+import assert from 'node:assert';
+import { validateDraft, AiExtractionSchema } from '../lib/schema.js';
+import { redact, extractOffline } from '../lib/extract.js';
+import { buildDemo } from '../lib/demo.js';
+import { buildInsights } from '../lib/insights.js';
 
 const today = '2026-10-25';
 const good = { type: 'expense', amount: 450, currency: 'INR', category: 'Food & Dining', date: '2026-10-24' };
@@ -66,4 +68,44 @@ test('offline parser handles Indian formats and relative dates', () => {
 
 test('non-financial text is recognised', () => {
     assert.equal(extractOffline('what will the weather be tomorrow?', today).is_financial_transaction, false);
+});
+
+test('demo data stays within this month and last, never in the future', () => {
+    const { rows, limits } = buildDemo('2026-10-15');
+    assert.ok(rows.length > 30);
+    assert.ok(rows.every((r) => r.date <= '2026-10-15' && (r.date.startsWith('2026-10') || r.date.startsWith('2026-09'))));
+    assert.ok(rows.every((r) => validateDraft(r, { today: '2026-10-15' }).canSave), 'every demo row passes validation');
+    assert.ok(limits.every((l) => l.month === '2026-10'));
+    assert.equal(new Set(rows.map((r) => r.draftId)).size, rows.length);
+});
+
+test('demo data handles January (previous month is last December)', () => {
+    const { rows } = buildDemo('2027-01-03');
+    assert.ok(rows.some((r) => r.date.startsWith('2026-12')));
+});
+
+test('insights flag overspending, budgets and savings', () => {
+    const out = buildInsights({
+        month: '2026-10',
+        today: '2026-10-15',
+        currency: 'INR',
+        totals: { INR: { spent: 20000, received: 50000 } },
+        prevTotals: { INR: { spent: 30000, received: 50000 } },
+        budgets: [
+            { category: 'Shopping', currency: 'INR', spent: 6000, limit: 5000 },
+            { category: 'Food & Dining', currency: 'INR', spent: 4500, limit: 5000 },
+        ],
+        daily: [{ date: '2026-10-02', spent: 20000 }],
+        prevDaily: [{ date: '2026-09-02', spent: 10000 }, { date: '2026-09-20', spent: 20000 }],
+    });
+    const text = out.map((i) => i.text).join(' | ');
+    assert.match(text, /100% more than at this point last month/);
+    assert.match(text, /Over your Shopping budget by ₹1,000/);
+    assert.match(text, /Food & Dining is at 90% of its budget/);
+    assert.match(text, /kept 60%/);
+    assert.match(text, /end of the month/);
+});
+
+test('insights are empty for an empty month', () => {
+    assert.deepEqual(buildInsights({ month: '2026-10', today: '2026-10-15', currency: 'INR', totals: {}, prevTotals: {}, budgets: [], daily: [], prevDaily: [] }), []);
 });

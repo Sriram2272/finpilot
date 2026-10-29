@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, localToday, money, prettyDate } from './api';
+import { api, applyTheme, download, loadTheme, localToday, money, monthLabel, prettyDate, shiftMonth } from './api';
 import Composer from './components/Composer';
 import Review from './components/Review';
-import Month from './components/Month';
+import Ledger from './components/Ledger';
+import { CategoryChart, DailyChart, Insights, StatTiles } from './components/Dashboard';
 
-const month = localToday().slice(0, 7);
+const thisMonth = () => localToday().slice(0, 7);
+const THEMES = { system: '◐ Auto', light: '☀ Light', dark: '☾ Dark' };
+const NEXT_THEME = { system: 'light', light: 'dark', dark: 'system' };
 
 function Saved({ saved, onAnother }) {
   const { transaction: t, budget: b } = saved;
@@ -25,11 +28,10 @@ function Saved({ saved, onAnother }) {
         </p>
         {b && (
           <p className="muted">
-            {t.category} total for {new Date(`${b.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long' })} is now <strong>{money(b.spent, b.currency)}</strong>
+            {t.category} total for {monthLabel(b.month, { month: 'long' })} is now <strong>{money(b.spent, b.currency)}</strong>
             {b.limit != null && <> of {money(b.limit, b.currency)}</>} across {b.count} {b.count === 1 ? 'entry' : 'entries'}.
           </p>
         )}
-        <p className="tiny-print">Record id {t._id}</p>
       </div>
       <button className="btn primary" onClick={onAnother}>
         Add another
@@ -41,6 +43,9 @@ function Saved({ saved, onAnother }) {
 export default function App() {
   const [health, setHealth] = useState(null);
   const [meta, setMeta] = useState(null);
+  const [theme, setTheme] = useState(loadTheme);
+  const [month, setMonth] = useState(thisMonth);
+
   const [stage, setStage] = useState('compose'); // compose | review | saved
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -48,30 +53,45 @@ export default function App() {
   const [saved, setSaved] = useState(null);
   const [composerKey, setComposerKey] = useState(0);
 
+  const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState([]);
-  const [budgets, setBudgets] = useState([]);
+  const [filters, setFilters] = useState({ q: '', category: '', type: '' });
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState('');
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [toast, setToast] = useState('');
+
+  useEffect(() => applyTheme(theme), [theme]);
 
   const refresh = useCallback(async () => {
     setListLoading(true);
     try {
-      const [tx, bd] = await Promise.all([api('/transactions'), api(`/budgets?month=${month}`)]);
+      const qs = new URLSearchParams({ month, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
+      const [tx, sm] = await Promise.all([api(`/transactions?${qs}`), api(`/summary?month=${month}`)]);
       setTransactions(tx);
-      setBudgets(bd.budgets);
+      setSummary(sm);
       setListError('');
     } catch (err) {
       setListError(err.message);
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [month, filters]);
 
   useEffect(() => {
     api('/health').then(setHealth).catch(() => setHealth({ ok: false }));
     api('/meta').then(setMeta).catch((err) => setError(err.message));
+  }, []);
+
+  useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const id = setTimeout(() => setToast(''), 3500);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   async function read(note) {
     setBusy(true);
@@ -90,7 +110,9 @@ export default function App() {
   function onSaved(data) {
     setSaved(data);
     setStage('saved');
-    refresh();
+    const savedMonth = data.transaction.date.slice(0, 7);
+    if (savedMonth !== month) setMonth(savedMonth);
+    else refresh();
   }
 
   function startOver() {
@@ -108,6 +130,46 @@ export default function App() {
     }
   }
 
+  async function loadDemo() {
+    setDemoBusy(true);
+    try {
+      const { seeded } = await api('/demo', { method: 'POST', body: { today: localToday() } });
+      setMonth(thisMonth());
+      setFilters({ q: '', category: '', type: '' });
+      await refresh();
+      setToast(`Loaded ${seeded} demo entries across this month and last.`);
+    } catch (err) {
+      setToast(err.message);
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
+  async function clearDemo() {
+    setDemoBusy(true);
+    try {
+      const { removed } = await api('/demo', { method: 'DELETE' });
+      await refresh();
+      setToast(`Removed ${removed} demo entries. Your own entries were kept.`);
+    } catch (err) {
+      setToast(err.message);
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
+  async function exportCsv() {
+    try {
+      await download(`/export.csv?month=${month}`, `finpilot-${month}.csv`);
+    } catch (err) {
+      setToast(err.message);
+    }
+  }
+
+  const hasDemo = transactions.some((t) => t.isDemo);
+  const isEmpty = summary && Object.keys(summary.totals).length === 0 && !filters.q && !filters.category && !filters.type;
+  const atCurrent = month >= thisMonth();
+
   return (
     <div className="page">
       <header className="top">
@@ -120,13 +182,56 @@ export default function App() {
             <p className="muted">Say what you spent. I’ll file it.</p>
           </div>
         </div>
-        {health && (
-          <div className="status">
-            <span className={`pill ${health.engine === 'claude' ? 'good' : 'neutral'}`}>{health.engine === 'claude' ? 'AI: Claude' : 'AI: offline parser'}</span>
-            <span className={`pill ${health.db === 'connected' ? 'good' : 'bad'}`}>{health.db === 'connected' ? 'Database connected' : 'Database offline'}</span>
-          </div>
-        )}
+        <div className="status">
+          {health && (
+            <>
+              <span className={`pill ${health.engine === 'claude' ? 'good' : 'neutral'}`}>{health.engine === 'claude' ? 'AI: Claude' : 'AI: offline parser'}</span>
+              <span className={`pill ${health.db === 'connected' ? 'good' : 'bad'}`}>{health.db === 'connected' ? 'Cloudflare D1 connected' : 'Database offline'}</span>
+            </>
+          )}
+          <button className="pill theme-btn" onClick={() => setTheme(NEXT_THEME[theme])} aria-label={`Theme: ${theme}. Click to change.`}>
+            {THEMES[theme]}
+          </button>
+        </div>
       </header>
+
+      <nav className="toolbar" aria-label="Month">
+        <div className="month-nav">
+          <button className="btn tiny" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label="Previous month">
+            ‹
+          </button>
+          <strong>{monthLabel(month)}</strong>
+          <button className="btn tiny" onClick={() => setMonth((m) => shiftMonth(m, 1))} disabled={atCurrent} aria-label="Next month">
+            ›
+          </button>
+          {!atCurrent && (
+            <button className="link" onClick={() => setMonth(thisMonth())}>
+              Today
+            </button>
+          )}
+        </div>
+        <div className="demo-actions">
+          <button className="btn tiny" onClick={loadDemo} disabled={demoBusy}>
+            {demoBusy ? 'Working…' : '✨ Load demo data'}
+          </button>
+          {hasDemo && (
+            <button className="btn tiny ghost" onClick={clearDemo} disabled={demoBusy}>
+              Clear demo
+            </button>
+          )}
+        </div>
+      </nav>
+
+      {isEmpty && month === thisMonth() && (
+        <section className="demo-banner">
+          <div>
+            <strong>New here?</strong> Load a realistic demo month to explore the dashboard, budgets, insights, editing and CSV export. Demo entries are tagged and can be cleared any time.
+          </div>
+          <button className="btn primary" onClick={loadDemo} disabled={demoBusy}>
+            Try the demo
+          </button>
+        </section>
+      )}
 
       <main className="layout">
         <div className="flow">
@@ -146,17 +251,51 @@ export default function App() {
           </p>
         </div>
 
-        <Month
-          month={month}
-          budgets={budgets}
-          transactions={transactions}
-          loading={listLoading}
-          error={listError}
-          freshId={saved?.transaction?._id}
-          onRefresh={refresh}
-          onDelete={remove}
-        />
+        <aside className="card overview">
+          <h2>{monthLabel(month)}</h2>
+          {summary ? (
+            <>
+              <StatTiles summary={summary} />
+              <Insights insights={summary.insights} />
+              {Object.keys(summary.totals).length === 0 && <p className="muted">Nothing logged this month yet.</p>}
+            </>
+          ) : (
+            <p className="muted">{listError || 'Loading…'}</p>
+          )}
+        </aside>
       </main>
+
+      {summary && (
+        <section className="charts">
+          <div className="card">
+            <DailyChart summary={summary} />
+          </div>
+          <div className="card">
+            <CategoryChart summary={summary} onChanged={refresh} />
+          </div>
+        </section>
+      )}
+
+      <Ledger
+        meta={meta}
+        transactions={transactions}
+        loading={listLoading}
+        error={listError}
+        filters={filters}
+        setFilters={setFilters}
+        freshId={saved?.transaction?.id}
+        onRefresh={refresh}
+        onDelete={remove}
+        onExport={exportCsv}
+      />
+
+      <footer className="foot muted">FinPilot · Cloudflare Workers + D1 · {health?.engine === 'claude' ? `Claude (${health.model})` : 'offline parser'}</footer>
+
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

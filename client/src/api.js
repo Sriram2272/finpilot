@@ -29,7 +29,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   try {
     res = await fetch(`/api${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', 'X-Ledger-Id': ledgerId() },
+      headers: { 'Content-Type': 'application/json', 'X-Ledger-Id': ledgerId(), 'X-Today': localToday() },
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
@@ -58,3 +58,52 @@ export function prettyDate(iso) {
 }
 
 export const PAYMENT_LABELS = { cash: 'Cash', card: 'Card', upi: 'UPI', bank_transfer: 'Bank transfer', wallet: 'Wallet' };
+
+// Fetches a file from the API (with the ledger header) and hands it to the browser as a download.
+export async function download(path, filename) {
+  const res = await fetch(`/api${path}`, { headers: { 'X-Ledger-Id': ledgerId(), 'X-Today': localToday() } });
+  if (!res.ok) throw new Error(`Download failed (${res.status}).`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function shiftMonth(month, delta) {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+export function monthLabel(month, opts = { month: 'long', year: 'numeric' }) {
+  return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', opts);
+}
+
+export function shortMoney(amount, currency = 'INR') {
+  try {
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(amount);
+  } catch {
+    return `${currency} ${amount}`;
+  }
+}
+
+// Theme: 'system' | 'light' | 'dark', remembered per browser.
+export function loadTheme() {
+  try {
+    return localStorage.getItem('finpilot-theme') || 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+export function applyTheme(theme) {
+  if (theme === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', theme);
+  try {
+    localStorage.setItem('finpilot-theme', theme);
+  } catch {
+    /* private mode */
+  }
+}
